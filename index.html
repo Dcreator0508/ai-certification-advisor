@@ -535,12 +535,20 @@ const HELD_LABELS = {};
 HELD_GROUPS.forEach(g=>g.items.forEach(h=>HELD_LABELS[h.id]=h.t));
 const $ = s=>document.querySelector(s);
 const state = {role:"", direction:"stay", held:new Set(), govExp:false, budget:"any", hours:6};
+let suppressScroll=false;
 
-$("#role").onchange=e=>{state.role=e.target.value; refreshGovExp();};
-$("#direction").onchange=e=>{state.direction=e.target.value; refreshGovExp();};
+/* Re-run automatically once results are on screen, so they never go stale when inputs change. */
+function autoRun(){
+  if($("#results").style.display!=="block" || !state.role) return;
+  suppressScroll=true; $("#run").click(); suppressScroll=false;
+}
+
+$("#role").onchange=e=>{state.role=e.target.value; refreshGovExp(); autoRun();};
+$("#direction").onchange=e=>{state.direction=e.target.value; refreshGovExp(); autoRun();};
 $("#hours").oninput=e=>{state.hours=+e.target.value;$("#hoursVal").textContent=state.hours+" hours per week";};
-$("#budget").onchange=e=>state.budget=e.target.value;
-$("#govExp").onchange=e=>state.govExp=e.target.checked;
+$("#hours").onchange=()=>autoRun();
+$("#budget").onchange=e=>{state.budget=e.target.value; autoRun();};
+$("#govExp").onchange=e=>{state.govExp=e.target.checked; autoRun();};
 
 function effSeat(){
   return state.direction==="stay" ? state.role : state.direction;
@@ -567,7 +575,7 @@ HELD_GROUPS.forEach(g=>{
         if(ev.target.checked){ state.held.add(id); state.held.delete("none"); const n=ddPanel.querySelector('input[data-id=none]'); if(n) n.checked=false; }
         else state.held.delete(id);
       }
-      renderTags(); refreshGovExp();
+      renderTags(); refreshGovExp(); autoRun();
     };
     ddPanel.appendChild(l);
   });
@@ -681,8 +689,8 @@ $("#run").onclick=()=>{
 
   $("#results").style.display="block";
   renderCmp();
-  switchTab("rank");
-  $("#results").scrollIntoView({behavior:"smooth"});
+  switchTab(suppressScroll ? activeTab : "rank");
+  if(!suppressScroll) $("#results").scrollIntoView({behavior:"smooth"});
 };
 
 function render(r,rank){
@@ -797,7 +805,9 @@ function studyPlanHtml(c,t,w){
 }
 
 /* ---------- Results tabs ---------- */
+let activeTab="rank";
 function switchTab(which){
+  activeTab=which;
   const rank = which==="rank";
   $("#paneRank").style.display = rank?"block":"none";
   $("#paneCmp").style.display = rank?"none":"block";
@@ -892,7 +902,7 @@ function renderCmp(){
 function gateAdvice(c){
   const map={
     aaia:"CISA is the most direct route in. CIA, CPA, ACCA and similar designations with an IT audit focus also qualify.",
-    aaism:"CISM or CISSP must come first. There is no experience-based waiver.",
+    aaism:"CISM or CISSP must come first.",
     aair:"More than 25 designations qualify, including CRISC, CISA, CISM, CISSP and PMI-RMP. An open certification such as AIGP or RAI can be a first step while you earn one.",
     aaig:"CGEIT holders can sit the beta now. AIGP is the open governance certification in the meantime."
   };
