@@ -86,7 +86,12 @@ details.map summary{cursor:pointer;font-size:13.5px;font-weight:700;color:var(--
 .pill.partial{background:#F7ECE0;color:var(--warn)}
 .pill.new{background:var(--tintLight);color:var(--muted)}
 .map-note{font-size:12px;color:var(--muted);margin-top:8px}
-.cmp-wrap{margin-top:36px;border-top:2px solid var(--line);padding-top:18px}
+.cmp-wrap{margin-top:8px;border-top:2px solid var(--line);padding-top:18px}
+.tabs{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 18px}
+.tab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:9px 20px;font-size:13.5px;font-weight:700;color:var(--mid);cursor:pointer;font-family:inherit;transition:background .15s}
+.tab:hover{border-color:var(--mid)}
+.tab.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+.cmp-link{display:inline-block;margin-top:12px;font-size:13px;font-weight:700;color:var(--mid);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 table.cmp{margin-top:16px;background:#fff;border:1px solid var(--line);border-radius:10px}
 table.cmp th,table.cmp td{vertical-align:top}
 table.cmp td:first-child,table.cmp th:first-child{width:150px;font-weight:700;color:var(--primary);white-space:normal}
@@ -196,25 +201,34 @@ footer a{color:var(--primary);font-weight:700}
 
 <section id="results">
   <div class="step-label">Your result</div>
-  <h2>Your ranked list</h2>
-  <p class="hint" id="rankHint">Ranked by fit for your target area, entry requirements met, and overlap with what you already hold. Costs show member and non-member rates where the body offers both.</p>
-  <div id="heldNote"></div>
-  <div id="out"></div>
-  <div class="note-box">
-    <b>How the overlap estimate works.</b> Each percentage range is an informed estimate built by comparing the official exam content outlines (domains and weights) of the certification you hold with the one you are considering. No certification body grants exemptions or credit here. Treat it as a guide to where your study hours will go.
-  </div>
-  <div class="disclaimer">
-    <b>Before you pay.</b> All exam formats, fees, entry requirements and renewal terms come from the official pages of ISACA, IAPP, PeopleCert, GARP and PECB, verified as of <b>31 October 2026</b>. Fees exclude tax and regional pricing varies, so confirm on the official page before you commit. Preparation ranges are published estimates, not guarantees; your background moves you within them. AAIG figures are beta terms and may change at its Q1 2027 launch.
+  <div class="tabs">
+    <button class="tab active" id="tabRank" type="button">Your ranked list</button>
+    <button class="tab" id="tabCmp" type="button">Compare any two</button>
   </div>
 
-  <div class="cmp-wrap">
-    <h2>Compare any two, head to head</h2>
-    <p class="hint">Pick two certifications. Preparation weeks and overlap reflect your profile above; the fit line shows where each one stands in your ranked list.</p>
-    <div class="row">
-      <div class="field"><label class="lb" for="cmpA">First certification</label><select id="cmpA"></select></div>
-      <div class="field"><label class="lb" for="cmpB">Second certification</label><select id="cmpB"></select></div>
+  <div id="paneRank">
+    <h2>Your ranked list</h2>
+    <p class="hint" id="rankHint">Ranked by fit for your target area, entry requirements met, and overlap with what you already hold. Costs show member and non-member rates where the body offers both.</p>
+    <div id="heldNote"></div>
+    <div id="out"></div>
+    <div class="note-box">
+      <b>How the overlap estimate works.</b> Each percentage range is an informed estimate built by comparing the official exam content outlines (domains and weights) of the certification you hold with the one you are considering. No certification body grants exemptions or credit here. Treat it as a guide to where your study hours will go.
     </div>
-    <div id="cmpOut"></div>
+    <div class="disclaimer">
+      <b>Before you pay.</b> All exam formats, fees, entry requirements and renewal terms come from the official pages of ISACA, IAPP, PeopleCert, GARP and PECB, verified as of <b>31 October 2026</b>. Fees exclude tax and regional pricing varies, so confirm on the official page before you commit. Preparation ranges are published estimates, not guarantees; your background moves you within them. AAIG figures are beta terms and may change at its Q1 2027 launch.
+    </div>
+  </div>
+
+  <div id="paneCmp" style="display:none">
+    <div class="cmp-wrap">
+      <h2>Compare any two, head to head</h2>
+      <p class="hint">Pick two certifications. Preparation weeks and overlap reflect your profile; the fit line shows where each one stands in your ranked list.</p>
+      <div class="row">
+        <div class="field"><label class="lb" for="cmpA">First certification</label><select id="cmpA"></select></div>
+        <div class="field"><label class="lb" for="cmpB">Second certification</label><select id="cmpB"></select></div>
+      </div>
+      <div id="cmpOut"></div>
+    </div>
   </div>
 </section>
 
@@ -667,6 +681,7 @@ $("#run").onclick=()=>{
 
   $("#results").style.display="block";
   renderCmp();
+  switchTab("rank");
   $("#results").scrollIntoView({behavior:"smooth"});
 };
 
@@ -704,6 +719,7 @@ function render(r,rank){
     <div class="gaps"><b>3-year cost (exam and upkeep):</b> ${UPKEEP[c.id].tco3}</div>
     ${domainMapHtml(c,t)}
     ${studyPlanHtml(c,t,w)}
+    <a class="cmp-link" data-id="${c.id}">Compare this head to head</a>
     `}
     <div class="src">Official page and figures (as of 31 Oct 2026): <a href="${c.url}" target="_blank" rel="noopener">${c.src}</a></div>
   `;
@@ -779,6 +795,26 @@ function studyPlanHtml(c,t,w){
     <p class="map-note">${basis}A planning guide, not a course schedule: reorder freely, and retake the weeks that feel thin. Adjust the study-time slider above to reshape the plan.</p>
   </details>`;
 }
+
+/* ---------- Results tabs ---------- */
+function switchTab(which){
+  const rank = which==="rank";
+  $("#paneRank").style.display = rank?"block":"none";
+  $("#paneCmp").style.display = rank?"none":"block";
+  $("#tabRank").classList.toggle("active",rank);
+  $("#tabCmp").classList.toggle("active",!rank);
+}
+$("#tabRank").onclick=()=>switchTab("rank");
+$("#tabCmp").onclick=()=>switchTab("cmp");
+$("#out").addEventListener("click",e=>{
+  const a=e.target.closest(".cmp-link");
+  if(!a) return;
+  cmpA.value=a.dataset.id;
+  if(cmpB.value===a.dataset.id) cmpB.value = a.dataset.id==="aigp" ? "itil" : "aigp";
+  renderCmp();
+  switchTab("cmp");
+  $("#results").scrollIntoView({behavior:"smooth"});
+});
 
 /* ---------- Head-to-head compare ---------- */
 const cmpA=$("#cmpA"), cmpB=$("#cmpB");
