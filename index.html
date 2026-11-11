@@ -40,7 +40,7 @@ select:focus{border-color:var(--primary);outline:none}
 .dd-panel{display:none;position:absolute;z-index:30;top:calc(100% + 6px);left:0;right:0;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(22,50,79,.14);max-height:320px;overflow:auto;padding:8px}
 .dd.open .dd-panel{display:block}
 .dd-group{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:10px 10px 4px}
-.dd-item{display:flex;align-items:flex-start;gap:9px;padding:8px 10px;border-radius:7px;cursor:pointer;font-size:14px}
+.dd-item{display:flex;align-items:flex-start;gap:9px;padding:8px 10px;border-radius:7px;cursor:pointer;font-size:14px;min-height:44px}
 .dd-item:hover{background:var(--tintLight)}
 .dd-item input{margin-top:3px;accent-color:var(--primary);width:15px;height:15px;flex:none}
 .dd-item .sub{font-size:12px;color:var(--muted)}
@@ -126,20 +126,20 @@ footer a{color:var(--primary);font-weight:700}
 
 <section>
   <div class="step-label">Step 1 of 4</div>
-  <h2>Your current role</h2>
-  <p class="hint">Choose the closest match.</p>
+  <h2>Your current working areas</h2>
+  <p class="hint">Select every GRC area you work in. If you choose more than one, you can tell us which is your primary area.</p>
   <div class="field">
-    <label class="lb" for="role">I currently work in</label>
-    <select id="role">
-      <option value="">Select your area</option>
-      <option value="audit">Audit and Assurance</option>
-      <option value="security">Security</option>
-      <option value="risk">Risk</option>
-      <option value="governance">Governance and Compliance</option>
-      <option value="tprm">Third-Party Risk (TPRM)</option>
-      <option value="bc">Business Continuity</option>
-      <option value="build">Build and Implement</option>
-    </select>
+    <span class="lb" id="roleLabel">I currently work in</span>
+    <div class="dd" id="roleDd">
+      <button type="button" class="dd-btn" id="roleDdBtn" aria-labelledby="roleLabel roleDdLabel" aria-haspopup="true" aria-expanded="false"><span class="ph" id="roleDdLabel">Select all that apply</span><span class="caret">▼</span></button>
+      <div class="dd-panel" id="roleDdPanel"></div>
+    </div>
+    <div class="tags" id="roleTags"></div>
+  </div>
+  <div class="field" id="primaryRoleWrap" style="display:none">
+    <label class="lb" for="primaryRole">My primary working area is</label>
+    <select id="primaryRole"></select>
+    <p class="small" style="margin-top:6px">Your primary area carries 60% of the role-fit weighting. Your additional areas share the remaining 40% equally.</p>
   </div>
 </section>
 
@@ -534,32 +534,59 @@ const DOMAIN_MAPS = {
 const HELD_LABELS = {};
 HELD_GROUPS.forEach(g=>g.items.forEach(h=>HELD_LABELS[h.id]=h.t));
 const $ = s=>document.querySelector(s);
-const state = {role:"", direction:"stay", held:new Set(), govExp:false, budget:"any", hours:6};
+const state = {roles:new Set(), role:"", direction:"stay", held:new Set(), govExp:false, budget:"any", hours:6};
 let suppressScroll=false;
 
 /* Re-run automatically once results are on screen, so they never go stale when inputs change. */
 function autoRun(){
-  if($("#results").style.display!=="block" || !state.role) return;
+  if($("#results").style.display!=="block") return;
+  if(!state.roles.size){ $("#results").style.display="none"; return; }
   suppressScroll=true; $("#run").click(); suppressScroll=false;
 }
 
-$("#role").onchange=e=>{state.role=e.target.value; refreshGovExp(); autoRun();};
 $("#direction").onchange=e=>{state.direction=e.target.value; refreshGovExp(); autoRun();};
 $("#hours").oninput=e=>{state.hours=+e.target.value;$("#hoursVal").textContent=state.hours+" hours per week";};
 $("#hours").onchange=()=>autoRun();
 $("#budget").onchange=e=>{state.budget=e.target.value; autoRun();};
 $("#govExp").onchange=e=>{state.govExp=e.target.checked; autoRun();};
 
-function effSeat(){
-  return state.direction==="stay" ? state.role : state.direction;
-}
+function selectedRoles(){ return [...state.roles]; }
+function effSeats(){ return state.direction==="stay" ? selectedRoles() : [state.direction]; }
+function effSeat(){ return state.direction==="stay" ? (state.role||selectedRoles()[0]||"") : state.direction; }
 function refreshGovExp(){
-  const show = effSeat()==="governance" && !state.held.has("cgeit");
+  const show = effSeats().includes("governance") && !state.held.has("cgeit");
   $("#govExpWrap").style.display = show ? "block" : "none";
   if(!show){ $("#govExp").checked=false; state.govExp=false; }
 }
 
-/* multi-select dropdown */
+/* Current working areas: multi-select, with a primary area when more than one is chosen. */
+const roleDd=$("#roleDd"), roleDdBtn=$("#roleDdBtn"), roleDdPanel=$("#roleDdPanel"), roleDdLabel=$("#roleDdLabel"), roleTags=$("#roleTags"), primaryRole=$("#primaryRole");
+Object.entries(AREAS).forEach(([id,label])=>{
+  const l=document.createElement("label"); l.className="dd-item";
+  l.innerHTML=`<input type="checkbox" data-id="${id}"><span>${label}</span>`;
+  l.querySelector("input").onchange=ev=>{
+    if(ev.target.checked) state.roles.add(id); else state.roles.delete(id);
+    syncPrimaryRole(); refreshGovExp(); autoRun();
+  };
+  roleDdPanel.appendChild(l);
+});
+function syncPrimaryRole(){
+  const roles=selectedRoles();
+  if(!state.roles.has(state.role)) state.role=roles[0]||"";
+  primaryRole.innerHTML=roles.map(id=>`<option value="${id}">${AREAS[id]}</option>`).join("");
+  primaryRole.value=state.role;
+  $("#primaryRoleWrap").style.display=roles.length>1?"block":"none";
+  roleTags.innerHTML="";
+  roles.forEach(id=>{
+    const s=document.createElement("span"); s.className="tag";
+    s.textContent=AREAS[id]+(roles.length>1&&id===state.role?" · Primary":""); roleTags.appendChild(s);
+  });
+  roleDdLabel.textContent=roles.length?roles.length+(roles.length===1?" area selected":" areas selected"):"Select all that apply";
+  roleDdLabel.classList.toggle("ph",!roles.length);
+}
+primaryRole.onchange=e=>{state.role=e.target.value; syncPrimaryRole(); autoRun();};
+
+/* Multi-select dropdowns */
 const dd=$("#dd"), ddBtn=$("#ddBtn"), ddPanel=$("#ddPanel"), ddLabel=$("#ddLabel"), tagsEl=$("#tags");
 HELD_GROUPS.forEach(g=>{
   const gl=document.createElement("div"); gl.className="dd-group"; gl.textContent=g.label; ddPanel.appendChild(gl);
@@ -580,9 +607,13 @@ HELD_GROUPS.forEach(g=>{
     ddPanel.appendChild(l);
   });
 });
-ddBtn.onclick=e=>{e.stopPropagation(); dd.classList.toggle("open");};
+function setDropdownOpen(el,btn,open){ el.classList.toggle("open",open); btn.setAttribute("aria-expanded",String(open)); }
+roleDdBtn.onclick=e=>{e.stopPropagation(); setDropdownOpen(dd,ddBtn,false); setDropdownOpen(roleDd,roleDdBtn,!roleDd.classList.contains("open"));};
+ddBtn.onclick=e=>{e.stopPropagation(); setDropdownOpen(roleDd,roleDdBtn,false); setDropdownOpen(dd,ddBtn,!dd.classList.contains("open"));};
+roleDdPanel.onclick=e=>e.stopPropagation();
 ddPanel.onclick=e=>e.stopPropagation();
-document.addEventListener("click",()=>dd.classList.remove("open"));
+document.addEventListener("click",()=>{setDropdownOpen(roleDd,roleDdBtn,false);setDropdownOpen(dd,ddBtn,false);});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){setDropdownOpen(roleDd,roleDdBtn,false);setDropdownOpen(dd,ddBtn,false);}});
 function renderTags(){
   tagsEl.innerHTML="";
   const names=[];
@@ -611,9 +642,9 @@ function transferFor(c){
     if(t && (!best || t[0]>best.t[0])) best={held:h,t};
   }
   const sameArea = state.direction==="stay";
-  if(!best && sameArea && (c.id==="aigp"||c.id==="itil") && effSeat()==="governance")
+  if(!best && sameArea && (c.id==="aigp"||c.id==="itil") && effSeats().includes("governance"))
     best={held:null,t:c.id==="aigp"?[25,35,"A governance or compliance role already covers the framing. The study load is the regulatory and framework specifics."]:[15,25,"A governance role helps with the concepts. The ITIL models are new."]};
-  if(!best && sameArea && c.id==="rai" && effSeat()==="risk")
+  if(!best && sameArea && c.id==="rai" && effSeats().includes("risk"))
     best={held:null,t:[25,35,"A risk role already covers the risk-factor thinking. The AI and ML fundamentals are the new core."]};
   return best;
 }
@@ -626,10 +657,30 @@ function weeks(c, tr){
   return {lo,hi,wLo:Math.ceil(lo/state.hours),wHi:Math.ceil(hi/state.hours)};
 }
 
+function roleWeights(){
+  if(state.direction!=="stay") return {[state.direction]:1};
+  const roles=selectedRoles();
+  if(roles.length<=1) return roles.length?{[roles[0]]:1}:{};
+  const weights={[state.role]:0.6};
+  const additional=roles.filter(id=>id!==state.role);
+  additional.forEach(id=>{weights[id]=0.4/additional.length;});
+  return weights;
+}
+function roleFit(c){
+  return Object.entries(roleWeights()).reduce((total,[id,weight])=>total+(c.seat.includes(id)?40*weight:0),0);
+}
+function roleRelevanceHtml(c){
+  if(state.direction!=="stay") return "";
+  const roles=selectedRoles();
+  const matches=roles.filter(id=>c.seat.includes(id));
+  if(!matches.length) return "";
+  const names=matches.map(id=>AREAS[id]+(roles.length>1&&id===state.role?" (primary)":"")).join("; ");
+  return `<div class="gaps"><b>Relevant to your working areas:</b> ${names}</div>`;
+}
+
 function score(c,g,t){
   if(!g.ok) return -1;
-  let s=0;
-  if(c.seat.includes(effSeat())) s+=40;
+  let s=roleFit(c);
   if(t) s+=(t.t[0]+t.t[1])/2*0.4;
   s+= c.status==="beta" ? -5 : 10;
   if(state.budget!=="any" && c.costNumLow > +state.budget) s-=15;
@@ -645,7 +696,7 @@ function computeAll(){
 }
 
 $("#run").onclick=()=>{
-  if(!state.role){alert("Please choose your current role first (Step 1).");return;}
+  if(!state.roles.size){alert("Please choose at least one current working area (Step 1).");return;}
   const res=computeAll();
   const eligible=res.filter(r=>r.g.ok).sort((a,b)=>b.s-a.s);
   const gated=res.filter(r=>!r.g.ok);
@@ -659,19 +710,21 @@ $("#run").onclick=()=>{
     d.textContent="Already yours, so not recommended again: "+heldAI.map(h=>HELD_NAMES[h]).join(", ")+". What they transfer is reflected in the overlap estimates below.";
     hn.appendChild(d);
   }
+  const currentNames=selectedRoles().map(id=>AREAS[id]).join(", ");
   if(state.direction!=="stay"){
-    $("#rankHint").textContent="Ranked for your move from "+AREAS[state.role]+" into "+DIRECTION_NAMES[state.direction]+": fit for the target direction, entry requirements met, and overlap with what you already hold. Costs show member and non-member rates where the body offers both.";
+    $("#rankHint").textContent="Ranked for your move from "+currentNames+" into "+DIRECTION_NAMES[state.direction]+": fit for the target direction, entry requirements met, and overlap with what you already hold. Costs show member and non-member rates where the body offers both.";
+  } else if(selectedRoles().length>1){
+    $("#rankHint").textContent="Ranked by fit across your working areas: primary area 60%, additional areas share 40% equally. Entry requirements are checked first, and your existing certifications shape the overlap estimates. Costs show member and non-member rates where the body offers both.";
   } else {
     $("#rankHint").textContent="Ranked by fit for your role, entry requirements met, and overlap with what you already hold. Costs show member and non-member rates where the body offers both.";
   }
 
-  const proxNote = seatProximityNote();
-  if(proxNote){
+  seatProximityNotes().forEach(note=>{
     const pn=document.createElement("div");
     pn.className="note-box";
-    pn.innerHTML=proxNote;
+    pn.innerHTML=note;
     hn.appendChild(pn);
-  }
+  });
 
   eligible.forEach((r,i)=>out.appendChild(render(r,i+1)));
 
@@ -713,6 +766,7 @@ function render(r,rank){
     ${badge}
     <h3>${c.name}</h3>
     <div class="issuer">${c.body} · ${c.status==="beta"?"Beta window 11 Dec 2026 to 9 Jan 2027":"Active"}</div>
+    ${!isGated?roleRelevanceHtml(c):""}
     ${isGated?`<div class="gaps"><b>Why not yet:</b> ${g.why} ${gateAdvice(c)}</div>`:`
     <div class="facts">
       <div class="fact"><div class="k">Exam</div><div class="v">${c.exam}</div></div>
@@ -735,11 +789,11 @@ function render(r,rank){
   return wrap;
 }
 
-function seatProximityNote(){
-  const s=effSeat();
-  if(s==="bc") return "<b>A note on business continuity.</b> No AI certification is dedicated to BC/DR yet. The closest coverage sits inside AAIR: its largest domain includes AI incident response, business impact analysis, and BC/DR for AI. That is why it appears in your list.";
-  if(s==="tprm") return "<b>A note on third-party risk.</b> No AI certification is dedicated to TPRM yet. The closest coverage: AIGP examines vendor terms and deployment oversight, and ISO/IEC 42001 Lead Auditor covers supplier-side audits of AI management systems.";
-  return null;
+function seatProximityNotes(){
+  const seats=effSeats(), notes=[];
+  if(seats.includes("bc")) notes.push("<b>A note on business continuity.</b> No AI certification is dedicated to BC/DR yet. The closest coverage sits inside AAIR: its largest domain includes AI incident response, business impact analysis, and BC/DR for AI. That is why it appears in your list.");
+  if(seats.includes("tprm")) notes.push("<b>A note on third-party risk.</b> No AI certification is dedicated to TPRM yet. The closest coverage: AIGP examines vendor terms and deployment oversight, and ISO/IEC 42001 Lead Auditor covers supplier-side audits of AI management systems.");
+  return notes;
 }
 
 function domainMapHtml(c,t){
