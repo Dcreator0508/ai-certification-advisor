@@ -679,9 +679,10 @@ function roleRelevanceHtml(c){
 }
 
 function score(c,g,t){
-  if(!g.ok) return -1;
+  /* Fit and eligibility are separate. Role experience shapes preparation time,
+     but only held certifications add an overlap bonus to the ranking. */
   let s=roleFit(c);
-  if(t) s+=(t.t[0]+t.t[1])/2*0.4;
+  if(t && t.held) s+=(t.t[0]+t.t[1])/2*0.4;
   s+= c.status==="beta" ? -5 : 10;
   if(state.budget!=="any" && c.costNumLow > +state.budget) s-=15;
   return s;
@@ -698,8 +699,8 @@ function computeAll(){
 $("#run").onclick=()=>{
   if(!state.roles.size){alert("Please choose at least one current working area (Step 1).");return;}
   const res=computeAll();
-  const eligible=res.filter(r=>r.g.ok).sort((a,b)=>b.s-a.s);
-  const gated=res.filter(r=>!r.g.ok);
+  const ranked=res.slice().sort((a,b)=>b.s-a.s);
+  const bestEligible=ranked.find(r=>r.g.ok);
   const out=$("#out"); out.innerHTML="";
 
   const hn=$("#heldNote"); hn.innerHTML="";
@@ -712,11 +713,18 @@ $("#run").onclick=()=>{
   }
   const currentNames=selectedRoles().map(id=>AREAS[id]).join(", ");
   if(state.direction!=="stay"){
-    $("#rankHint").textContent="Ranked for your move from "+currentNames+" into "+DIRECTION_NAMES[state.direction]+": fit for the target direction, entry requirements met, and overlap with what you already hold. Costs show member and non-member rates where the body offers both.";
+    $("#rankHint").textContent="Ranked by fit for your move from "+currentNames+" into "+DIRECTION_NAMES[state.direction]+". Eligibility is shown separately on every card. Costs show member and non-member rates where the body offers both.";
   } else if(selectedRoles().length>1){
-    $("#rankHint").textContent="Ranked by fit across your working areas: primary area 60%, additional areas share 40% equally. Entry requirements are checked first, and your existing certifications shape the overlap estimates. Costs show member and non-member rates where the body offers both.";
+    $("#rankHint").textContent="Ranked by fit across your working areas: primary area 60%, additional areas share 40% equally. Eligibility is shown separately on every card. Certification-based overlap can improve the ranking; role experience shapes preparation time. Costs show member and non-member rates where the body offers both.";
   } else {
-    $("#rankHint").textContent="Ranked by fit for your role, entry requirements met, and overlap with what you already hold. Costs show member and non-member rates where the body offers both.";
+    $("#rankHint").textContent="Ranked by fit for your role and existing certifications. Eligibility is shown separately on every card. Costs show member and non-member rates where the body offers both.";
+  }
+
+  if(ranked.length && !ranked[0].g.ok && bestEligible){
+    const summary=document.createElement("div");
+    summary.className="note-box"; summary.id="bestEligibleSummary";
+    summary.textContent=ranked[0].c.name+" is the strongest fit for your profile. "+bestEligible.c.name+" is the highest-ranked option you can take now.";
+    hn.appendChild(summary);
   }
 
   seatProximityNotes().forEach(note=>{
@@ -726,19 +734,7 @@ $("#run").onclick=()=>{
     hn.appendChild(pn);
   });
 
-  eligible.forEach((r,i)=>out.appendChild(render(r,i+1)));
-
-  if(gated.length){
-    const h=document.createElement("div");
-    h.className="gated-h";
-    h.textContent="Not yet eligible";
-    out.appendChild(h);
-    const p=document.createElement("p");
-    p.className="hint";
-    p.textContent="These certifications have entry requirements you do not meet yet. Each card shows what unlocks it.";
-    out.appendChild(p);
-    gated.forEach(r=>out.appendChild(render(r,0)));
-  }
+  ranked.forEach((r,i)=>out.appendChild(render(r,i+1,!!bestEligible&&r.c.id===bestEligible.c.id)));
 
   $("#results").style.display="block";
   renderCmp();
@@ -746,28 +742,28 @@ $("#run").onclick=()=>{
   if(!suppressScroll) $("#results").scrollIntoView({behavior:"smooth"});
 };
 
-function render(r,rank){
+function render(r,rank,isBestEligible){
   const {c,g,t,w}=r;
   const isGated=!g.ok;
   const wrap=document.createElement("div");
   wrap.className="rank-row";
   const num=document.createElement("div");
-  num.className="rank-num"+((!isGated&&rank===1)?" first":"");
-  num.textContent=isGated?"":rank;
+  num.className="rank-num"+(rank===1?" first":"");
+  num.textContent=rank;
   const d=document.createElement("div");
-  d.className="verdict"+((!isGated&&rank===1)?" first":"");
-  const badge = isGated?`<span class="badge gate">Entry requirement not met</span>`
-    : rank===1?`<span class="badge best">Best match</span>`
-    : c.status==="beta"?`<span class="badge watch">Beta · launches Q1 2027</span>`
-    : `<span class="badge ok">Eligible</span>`;
+  d.className="verdict"+(rank===1?" first":"");
+  const badge = (rank===1?`<span class="badge best">Best fit</span>`:"")
+    + (isGated?`<span class="badge gate">Entry requirement not met</span>`
+      : isBestEligible?`<span class="badge ok">Best eligible option now</span>`:`<span class="badge ok">Eligible now</span>`)
+    + (c.status==="beta"?` <span class="badge watch">Beta · launches Q1 2027</span>`:"");
   const tPct = t?`${t.t[0]} to ${t.t[1]}%`:"0 to 15%";
   const tMid = t?(t.t[0]+t.t[1])/2:8;
   d.innerHTML=`
     ${badge}
     <h3>${c.name}</h3>
     <div class="issuer">${c.body} · ${c.status==="beta"?"Beta window 11 Dec 2026 to 9 Jan 2027":"Active"}</div>
-    ${!isGated?roleRelevanceHtml(c):""}
-    ${isGated?`<div class="gaps"><b>Why not yet:</b> ${g.why} ${gateAdvice(c)}</div>`:`
+    ${roleRelevanceHtml(c)}
+    ${isGated?`<div class="note-box"><b>Entry requirement not met:</b> ${g.why} ${gateAdvice(c)}</div>`:""}
     <div class="facts">
       <div class="fact"><div class="k">Exam</div><div class="v">${c.exam}</div></div>
       <div class="fact"><div class="k">Cost (exam and fees)</div><div class="v">${c.cost}</div></div>
@@ -782,7 +778,6 @@ function render(r,rank){
     ${domainMapHtml(c,t)}
     ${studyPlanHtml(c,t,w)}
     <a class="cmp-link" data-id="${c.id}">Compare this head to head</a>
-    `}
     <div class="src">Official page and figures (as of 31 Oct 2026): <a href="${c.url}" target="_blank" rel="noopener">${c.src}</a></div>
   `;
   wrap.appendChild(num); wrap.appendChild(d);
@@ -894,8 +889,8 @@ function cmpCell(id){
   const res=computeAll();
   const hit=res.find(r=>r.c.id===id);
   const g=hit?hit.g:gateStatus(c), t=hit?hit.t:transferFor(c), w=hit?hit.w:weeks(c,t);
-  const eligible=res.filter(r=>r.g.ok).sort((a,b)=>b.s-a.s);
-  const rank=hit&&g.ok ? eligible.findIndex(r=>r.c.id===id)+1 : 0;
+  const ranked=res.slice().sort((a,b)=>b.s-a.s);
+  const rank=hit ? ranked.findIndex(r=>r.c.id===id)+1 : 0;
   const heldMark=[...state.held].some(h=>HELD_EXCLUDES[h]===id);
   const dm=DOMAIN_MAPS[id];
   const doms=dm?dm.domains.map(d=>d[0]+(d[1]?" ("+d[1]+")":"")).join("; "):"";
@@ -910,20 +905,22 @@ function renderCmp(){
     out.innerHTML=`<p class="hint">Pick two different certifications to compare.</p>`;
     return;
   }
-  const verdict=(x,y)=>{
+  const verdict=x=>{
     if(x.heldMark) return "You already hold this one.";
-    if(!x.g.ok) return "Not yet eligible for you: "+x.g.why;
-    if(!y.heldMark&&!y.g.ok&&x.g.ok) return "This one is open to you now; the other is not.";
-    return x.rank?("Ranks number "+x.rank+" in your list."):"";
+    const position=x.rank?"Ranks number "+x.rank+" for fit. ":"";
+    return position+(x.g.ok?"Eligible now.":"Entry requirement not met: "+x.g.why);
   };
   const verdictLine=()=>{
     if(a.heldMark&&b.heldMark) return "You already hold both.";
-    if(a.rank&&b.rank) return a.rank<b.rank
-      ? "For your profile, "+a.c.name+" is the stronger next step (number "+a.rank+" vs number "+b.rank+" in your list)."
-      : "For your profile, "+b.c.name+" is the stronger next step (number "+b.rank+" vs number "+a.rank+" in your list).";
-    if(a.rank&&!b.rank) return "For your profile, "+a.c.name+" is open to you now (number "+a.rank+" in your list); "+b.c.name+" still has an entry requirement in your way.";
-    if(b.rank&&!a.rank) return "For your profile, "+b.c.name+" is open to you now (number "+b.rank+" in your list); "+a.c.name+" still has an entry requirement in your way.";
-    return "Neither is open to you yet. The entry gates below show what unlocks each.";
+    if(a.heldMark||b.heldMark){
+      const held=a.heldMark?a:b, other=a.heldMark?b:a;
+      return "You already hold "+held.c.name+". "+other.c.name+" ranks number "+other.rank+" for fit and "+(other.g.ok?"is open to you now.":"still has an entry requirement to meet.");
+    }
+    const stronger=a.rank<b.rank?a:b, other=a.rank<b.rank?b:a;
+    let line="For your profile, "+stronger.c.name+" is the stronger fit (number "+stronger.rank+" vs number "+other.rank+" in your list).";
+    if(!stronger.g.ok&&other.g.ok) line+=" "+other.c.name+" is the option you can take now.";
+    else if(!stronger.g.ok&&!other.g.ok) line+=" Both still have entry requirements to meet.";
+    return line;
   };
   const row=(k,va,vb)=>`<tr><td>${k}</td><td>${va}</td><td>${vb}</td></tr>`;
   const cell=x=>({
