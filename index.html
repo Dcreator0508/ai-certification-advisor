@@ -45,7 +45,10 @@ select:focus{border-color:var(--primary);outline:none}
 .dd-item input{margin-top:3px;accent-color:var(--primary);width:15px;height:15px;flex:none}
 .dd-item .sub{font-size:12px;color:var(--muted)}
 .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;max-width:460px}
-.tag{background:var(--tintLight);border:1px solid var(--tint);color:var(--primary);font-size:12.5px;font-weight:700;border-radius:999px;padding:4px 10px}
+.tag{background:var(--tintLight);border:1px solid var(--tint);color:var(--primary);font-size:12.5px;font-weight:700;border-radius:999px;padding:4px 10px;min-height:44px;display:inline-flex;align-items:center;gap:4px}
+.tag-remove{width:44px;height:44px;margin:-5px -8px -5px -2px;border:0;border-radius:50%;background:transparent;color:var(--mid);font:700 20px/1 'Quattrocento Sans',sans-serif;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.tag-remove:hover{background:var(--tint);color:var(--primary)}
+.tag-remove:focus-visible{outline:2px solid var(--primary);outline-offset:-3px}
 .row{display:flex;flex-wrap:wrap;gap:18px}
 .row .field{flex:1 1 200px}
 input[type=range]{width:100%}
@@ -248,7 +251,9 @@ footer a{color:var(--primary);font-weight:700}
 const AREAS = {
   audit:"Audit and Assurance", security:"Security", risk:"Risk",
   governance:"Governance and Compliance", tprm:"Third-Party Risk (TPRM)",
-  bc:"Business Continuity", build:"Build and Implement"
+  bc:"Business Continuity", build:"Build and Implement",
+  privacy:"Privacy and Data Protection", data:"Data Governance and Management",
+  legal:"Legal and Regulatory", itsm:"IT Service Management"
 };
 
 const DIRECTION_NAMES = {
@@ -478,6 +483,17 @@ const CERTS = [
   }
 ];
 
+/* Additional working areas map only to certifications with relevant published content. */
+const ADDED_AREA_FIT = {
+  privacy:["aigp"],
+  data:["aigp","itil","rai","iso-li"],
+  legal:["aigp","itil"],
+  itsm:["itil","iso-li"]
+};
+CERTS.forEach(c=>Object.entries(ADDED_AREA_FIT).forEach(([area,ids])=>{
+  if(ids.includes(c.id)) c.seat.push(area);
+}));
+
 /* ---------- State & UI ---------- */
 /* Renewal fees, CPE burden and 3-year cost of ownership.
    Sources (as of 31 Oct 2026): ISACA maintenance fee $45 member / $85 non-member per certification per year,
@@ -579,10 +595,27 @@ function syncPrimaryRole(){
   roleTags.innerHTML="";
   roles.forEach(id=>{
     const s=document.createElement("span"); s.className="tag";
-    s.textContent=AREAS[id]+(roles.length>1&&id===state.role?" · Primary":""); roleTags.appendChild(s);
+    const text=document.createElement("span");
+    text.textContent=AREAS[id]+(roles.length>1&&id===state.role?" · Primary":"");
+    const remove=document.createElement("button");
+    remove.type="button"; remove.className="tag-remove"; remove.dataset.removeRole=id;
+    remove.textContent="×"; remove.title="Remove "+AREAS[id];
+    remove.setAttribute("aria-label","Remove "+AREAS[id]);
+    remove.onclick=()=>removeRole(id);
+    s.append(text,remove); roleTags.appendChild(s);
   });
   roleDdLabel.textContent=roles.length?roles.length+(roles.length===1?" area selected":" areas selected"):"Select all that apply";
   roleDdLabel.classList.toggle("ph",!roles.length);
+}
+function removeRole(id){
+  const removedIndex=selectedRoles().indexOf(id);
+  state.roles.delete(id);
+  const checkbox=roleDdPanel.querySelector(`input[data-id="${id}"]`);
+  if(checkbox) checkbox.checked=false;
+  syncPrimaryRole(); refreshGovExp(); autoRun();
+  const buttons=roleTags.querySelectorAll(".tag-remove");
+  const next=buttons[Math.min(Math.max(removedIndex,0),buttons.length-1)];
+  (next||roleDdBtn).focus({preventScroll:true});
 }
 primaryRole.onchange=e=>{state.role=e.target.value; syncPrimaryRole(); autoRun();};
 
