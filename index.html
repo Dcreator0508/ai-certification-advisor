@@ -108,10 +108,46 @@ table.cmp td{font-size:13.5px}
 footer{border-top:1px solid var(--line);margin-top:40px;padding:26px 0 40px;font-size:13px;color:var(--muted)}
 footer a{color:var(--primary);font-weight:700}
 .small{font-size:12px;color:var(--muted)}
+.result-actions{display:flex;flex-wrap:wrap;gap:12px;margin:24px 0 8px;padding-top:20px;border-top:1px solid var(--line)}
+.action-btn{min-height:44px;border:1px solid var(--primary);border-radius:8px;padding:11px 18px;font:700 14px 'Quattrocento Sans',sans-serif;cursor:pointer}
+.action-btn.print{background:var(--primary);color:#fff}
+.action-btn.reset{background:#fff;color:var(--primary)}
+.action-btn:hover{background:var(--tintLight);color:var(--primary)}
+.action-btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.print-only{display:none}
 @media (max-width:560px){
   .facts{grid-template-columns:1fr 1fr}
   button.run{width:100%}
   .rank-num{font-size:22px;min-width:26px}
+  .result-actions{flex-direction:column}
+  .action-btn{width:100%}
+}
+@media print{
+  @page{margin:12mm}
+  body{background:#fff;font-size:10pt;line-height:1.4;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  header.hero,main>section:not(#results),.tabs,.result-actions,.cmp-link,#paneCmp,#results>.step-label{display:none!important}
+  .wrap{max-width:none;width:auto;padding:0}
+  #results,#paneRank{display:block!important;padding:0}
+  .print-only{display:block!important}
+  .print-report-header{border-bottom:2px solid var(--primary);padding-bottom:12px;margin-bottom:16px}
+  .print-report-header h1{font-size:25pt;margin-bottom:4px}
+  .print-report-header p{font-size:10pt;margin-top:4px}
+  .print-profile{margin-top:10px;line-height:1.55}
+  #paneRank>h2{font-size:19pt}
+  #rankHint{font-size:9pt;margin-bottom:10px}
+  .rank-row{gap:8px;break-inside:avoid}
+  .rank-num{font-size:20pt;min-width:26px}
+  .verdict{break-inside:avoid;padding:12px 14px;margin:6px 0;box-shadow:none!important}
+  .verdict h3{font-size:15pt}
+  .verdict .issuer{margin-bottom:6px}
+  .badge{font-size:8pt;margin-bottom:5px}
+  .facts{grid-template-columns:repeat(2,1fr);gap:6px 14px;margin:8px 0}
+  .fact .v{font-size:10pt}
+  .gaps,.src{font-size:9pt;margin-top:6px}
+  details.map{display:none!important}
+  .note-box,.disclaimer,.held-note{break-inside:avoid;padding:9px 11px;margin:9px 0;font-size:9pt}
+  footer{margin-top:16px;padding:12px 0 0;font-size:9pt;break-inside:avoid}
+  a{text-decoration:none}
 }
 </style>
 </head>
@@ -204,6 +240,13 @@ footer a{color:var(--primary);font-weight:700}
 
 <section id="results">
   <div class="step-label">Your result</div>
+  <div class="print-only print-report-header">
+    <h1>AI Certification Advisor</h1>
+    <p>Your certification recommendations</p>
+    <div class="print-profile" id="printProfile"></div>
+    <p>Generated on <span id="printDate"></span>. Certification information verified as of 31 October 2026.</p>
+    <p>Latest version: https://dcreator0508.github.io/ai-certification-advisor/</p>
+  </div>
   <div class="tabs">
     <button class="tab active" id="tabRank" type="button">Your ranked list</button>
     <button class="tab" id="tabCmp" type="button">Compare any two</button>
@@ -232,6 +275,10 @@ footer a{color:var(--primary);font-weight:700}
       </div>
       <div id="cmpOut"></div>
     </div>
+  </div>
+  <div class="result-actions" aria-label="Result actions">
+    <button class="action-btn print" id="printResults" type="button">Print / Save as PDF</button>
+    <button class="action-btn reset" id="resetAll" type="button">Clear all and start again</button>
   </div>
 </section>
 
@@ -769,10 +816,43 @@ $("#run").onclick=()=>{
 
   ranked.forEach((r,i)=>out.appendChild(render(r,i+1,!!bestEligible&&r.c.id===bestEligible.c.id)));
 
+  renderPrintProfile();
   $("#results").style.display="block";
   renderCmp();
   switchTab(suppressScroll ? activeTab : "rank");
   if(!suppressScroll) $("#results").scrollIntoView({behavior:"smooth"});
+};
+
+function renderPrintProfile(){
+  if(!state.roles.size) return;
+  const roles=selectedRoles().map(id=>AREAS[id]+(selectedRoles().length>1&&id===state.role?" (primary)":"")).join("; ");
+  const direction=state.direction==="stay"?"Strengthen my current role with AI":"Move into "+DIRECTION_NAMES[state.direction];
+  const held=[...state.held].filter(h=>h!=="none").map(h=>HELD_LABELS[h]).filter(Boolean);
+  $("#printProfile").innerHTML=`
+    <div><b>Current working areas:</b> ${roles}</div>
+    <div><b>AI direction:</b> ${direction}</div>
+    <div><b>Certifications already held:</b> ${held.length?held.join("; "):"None yet"}</div>
+    <div><b>Budget:</b> ${$("#budget").selectedOptions[0].textContent} &nbsp; <b>Study time:</b> ${state.hours} hours per week</div>`;
+  $("#printDate").textContent=new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});
+}
+$("#printResults").onclick=()=>{renderPrintProfile();window.print();};
+window.addEventListener("beforeprint",renderPrintProfile);
+
+$("#resetAll").onclick=()=>{
+  if(!window.confirm("Clear all your selections and remove these results?")) return;
+  state.roles=new Set(); state.role=""; state.direction="stay";
+  state.held=new Set(); state.govExp=false; state.budget="any"; state.hours=6;
+  roleDdPanel.querySelectorAll("input[data-id]").forEach(i=>{i.checked=false;});
+  ddPanel.querySelectorAll("input[data-id]").forEach(i=>{i.checked=false;});
+  $("#direction").value="stay"; $("#budget").value="any";
+  $("#hours").value="6"; $("#hoursVal").textContent="6 hours per week";
+  $("#govExp").checked=false;
+  syncPrimaryRole(); renderTags(); refreshGovExp();
+  $("#out").innerHTML=""; $("#heldNote").innerHTML=""; $("#cmpOut").innerHTML="";
+  $("#printProfile").innerHTML=""; $("#results").style.display="none";
+  switchTab("rank");
+  document.querySelector("main section").scrollIntoView({behavior:"smooth",block:"start"});
+  roleDdBtn.focus({preventScroll:true});
 };
 
 function render(r,rank,isBestEligible){
